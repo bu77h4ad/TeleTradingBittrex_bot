@@ -91,7 +91,7 @@ while True:
 			cfg['Data']['deposit'] = last_message['text'].split(' ')[1]
 			bot.sendMessage(chat_id =  str(last_message['from']['id']), text = "\u2757\ufe0f Депозит установлен на : " + last_message['text'].split(' ')[1] + "%")
 			# сохраняем настройки в файл
-			with open('tele_crypto_bot_CFG.ini', 'w') as configfile:
+			with open('TeleTradingBittrex_bot.ini', 'w') as configfile:
 				cfg.write(configfile)
 			continue	
 		else:
@@ -113,7 +113,7 @@ while True:
 		y = y + 1 		
 		wait_message = bot.getMessage()
 		if wait_message == False : continue
-		if cfg.get('Data', 'owner') == wait_message['from']['username']: 
+		if cfg.get('Data', 'owner').lower() == wait_message['from']['username'].lower(): 
 			if wait_message['text'] in ['Да','да','ДА'] :
 	 			bot.sendMessage(chat_id = str(last_message['from']['id']), text =  "\u2b55\ufe0f Операция подтверждена ")
 	 			print ("Сonfirmed")
@@ -161,5 +161,7 @@ while True:
 	xCoin = last_balance['Available'] # доступный для торговли баланс	
 	bid = last_tiker = my_bittrex.get_ticker('BTC-'+ last_message['text'])['result']['Bid']			
 	bid = bid / 100 * (100 + cfg.getfloat('Data', 'sellpercent'))
-	text = str(my_bittrex.sell_limit('BTC-'+ last_message['text'], xCoin / 100 * cfg.getfloat('Data', 'deposit'), bid ) )
+	text = str(my_bittrex.sell_limit('BTC-'+ last_message['text'], xCoin , bid ) )
 	bot.sendMessage(chat_id = str(last_message['from']['id']), text =  "Ответ bittrex на продажу: \n\n" + text ) 
+	bot.sendMessage(chat_id = str(last_message['from']['id']), text =  "Операция выполнена" ) 
+	
