@@ -5,6 +5,16 @@ import requests
 import pprint
 from APItelegram import telegram
 
+def setSell(last_message ):
+	# ставит лимитный ордер на прожажу заданной монеты	
+	last_balance = my_bittrex.get_balance(last_message['text'])['result']
+	xCoin = last_balance['Available'] # доступный для торговли баланс	
+	bid = last_tiker = my_bittrex.get_ticker('BTC-'+ last_message['text'])['result']['Bid']			
+	bid = bid / 100 * (100 + cfg.getfloat('Data', 'sellpercent'))
+	text = str(my_bittrex.sell_limit('BTC-'+ last_message['text'], xCoin , bid ) )
+	bot.sendMessage(chat_id = str(last_message['from']['id']), text =  "Ответ bittrex на продажу: \n\n" + text ) 
+	bot.sendMessage(chat_id = str(last_message['from']['id']), text =  "Операция выполнена" ) 
+
 def isfloat(value):
   try:
     float(value)
@@ -37,7 +47,7 @@ bot.delUpdates()
 #	return response.json()
 
 print ("Set sell percent ->\t\t", cfg.getfloat('Data', 'sellPercent'),"%")
-print ("Set deposit ->\t\t\t", cfg.getfloat('Data', 'deposit'),"%")
+print ("Set commission ->\t\t", cfg.getfloat('Data', 'commission'),"%")
 print ("Set bot owner ->\t\t", cfg.get('Data', 'owner'))
 
 getMe = bot.getMe()
@@ -64,7 +74,7 @@ print()
 
 # Цикл для проверки новых сообщений
 while True:
-	time.sleep(1)
+	time.sleep(0.5)
 
 	# проверка на новые сообщения
 	last_message = bot.getMessage()
@@ -77,11 +87,16 @@ while True:
 		bot.sendMessage(chat_id = str(last_message['from']['id']), text =  "Ты не мой хозяин" )
 		continue
 	print ("Message from owner ->", last_message['text'])
-	
+
+	# Ответ на команду /stop
+	if last_message['text'] == '/stop':
+		bot.sendMessage(chat_id =  str(last_message['from']['id']), text = "Бот отключен")
+		quit()
+
 	# Ответ на команду /start
 	if last_message['text'] == '/start':
 		bot.sendMessage(chat_id =  str(last_message['from']['id']), text = "Приветсвую тебя хозян!\nЯ твой маленький, торговый бот помошник :)")
-		bot.sendMessage(chat_id =  str(last_message['from']['id']), text = "Можешь мне писать название монеты, а я её буду покупать за BTC. И оставлю ордер, на продажу этой же монеты, на 5% дороже. \nДополнительные команды :'Депозит 90' - на сколь %, от всего депозита, ты хочешь купить монету.")
+		bot.sendMessage(chat_id =  str(last_message['from']['id']), text = "Можешь мне писать название монеты, а я её буду покупать за BTC. И оставлю ордер, на продажу этой же монеты, на " +str (cfg.getfloat('Data', 'sellPercent'))+ " % дороже.")
 		continue
 	# Ответ на команду ДЕПОЗИТ
 	if last_message['text'].split(' ')[0] == "Депозит" and len (last_message['text'].split(' ')) == 2 : 
@@ -105,11 +120,11 @@ while True:
 		continue
 	
 	# Подтверждение операции
-	bot.sendMessage(chat_id = str(last_message['from']['id']), text =  "\u2757\ufe0f 1. Купить '{0}' по текущей цене, на {1}% от депозита.\n\n\u2757\ufe0f 2. Поставить лимитный ордер на продажу '{0}' на {2}%  выше текуще стоимости. \n\nПодтверждаете ('Да'/'Нет') \u2753".format( last_message['text'], cfg.getfloat('Data', 'deposit'), cfg.getfloat('Data', 'sellPercent') ) )
+	bot.sendMessage(chat_id = str(last_message['from']['id']), text =  "\u2757\ufe0f 1. Купить '{0}' по текущей цене.\n\n\u2757\ufe0f 2. Поставить лимитный ордер на продажу '{0}' на {1}%  выше текуще стоимости. \n\nПодтверждаете ('Да'/'Нет') \u2753".format( last_message['text'], cfg.getfloat('Data', 'sellPercent') ) )
 	print ("Waiting for confim (30 sek) ...")
 	y=0
-	while y in range(0,30) :		
-		time.sleep(1)
+	while y in range(0,60) :		
+		time.sleep(0.5)
 		y = y + 1 		
 		wait_message = bot.getMessage()
 		if wait_message == False : continue
@@ -127,41 +142,43 @@ while True:
 		continue
 			
 	# Выполняет операции на бирже
-	
+	bot.sendMessage(chat_id = str(last_message['from']['id']), text =  "\u2757\ufe0f Закупаю... ")
 	while True :		
+		
 		last_balance = my_bittrex.get_balance('BTC')['result']
 		BTC = last_balance['Available'] # доступный для торговли баланс
 
-		last_tiker = my_bittrex.get_ticker('BTC-'+ last_message['text'])['result']			
-		ask = last_tiker['Ask'] # цена по которой я могу купить
-		bid = last_tiker['Bid'] # цена по которой я могу продать
+		if BTC <= 0.00050000 : 
+			bot.sendMessage(chat_id = str(last_message['from']['id']), text =  'Слишком маленький баланс: \nBTC : {:.8f} '.format(BTC) ) 
+			break
 
 		# покупает заданную монету
-		#ask=ask-ask/5
-		text = my_bittrex.buy_limit('BTC-'+ last_message['text'], BTC / 100 * cfg.getfloat('Data', 'deposit') / ask, ask ) 		
-		if text['success'] == True: 
-			text = 'OK!'
-		bot.sendMessage(chat_id = str(last_message['from']['id']), text =  "Ответ bittrex на покупку: \n\n" + str(text) ) 
-		
+		while True:
+			sellOrderBook = sorted ( my_bittrex.get_orderbook ("BTC-" + last_message['text'])['result']['sell'][0:10], key=lambda k: k['Quantity'], reverse=True )
+			
+			for x in range(0,10):			
+				# баланс БТС выраженный в xCoin  <  количество монет из книги ордеров
+				if BTC / sellOrderBook[x]['Rate'] < sellOrderBook[x]['Quantity']  : 
+					text = my_bittrex.buy_limit('BTC-' + last_message['text'], BTC / sellOrderBook[x]['Rate'] * float(1 - cfg.getfloat('Data', 'commission') / 100), sellOrderBook[x]['Rate'] )
+					print (text,BTC / sellOrderBook[x]['Rate'] * float(1 - cfg.getfloat('Data', 'commission') / 100), sellOrderBook[x]['Rate'])		
+				else: 
+					text = my_bittrex.buy_limit('BTC-' + last_message['text'], sellOrderBook[x]['Quantity'] * float(1 - cfg.getfloat('Data', 'commission') / 100), sellOrderBook[x]['Rate'] ) 						
+					
+				BTC = BTC - BTC / sellOrderBook[x]['Rate'] * float(1 - cfg.getfloat('Data', 'commission')/ 100)
+				if BTC <= 0.00050000 : break			
+			if BTC <= 0.00050000 : break		
+
 		# проверяет исполнился ли ордер
-		time.sleep(3)
+		bot.sendMessage(chat_id = str(last_message['from']['id']), text =  "Проверяю покупку (2 сек)...") 
+		time.sleep(1)
 		get_open_orders = my_bittrex.get_open_orders('BTC-' + last_message['text'])			
-		if len(get_open_orders['result']) == 0: break
+		if len(get_open_orders['result']) == 0: 
+			setSell(last_message)
+			break
 
-		# Если ордер на покупку не исполнился
+		# Если ордер на покупку не исполнился , то отменяет все открытые новые ордера
 		bot.sendMessage(chat_id = str(last_message['from']['id']), text =  "Не удалось выкупить весь объем.\nПовторяю...") 
-		for y in range(0,len(get_open_orders['result'])) :
-			OrderUuid = get_open_orders['result'][-1]['OrderUuid']						
-			my_bittrex.cancel(OrderUuid)
-			time.sleep(0.15)	
-								
-
-	# ставит лимитный ордер на прожажу заданной монеты	
-	last_balance = my_bittrex.get_balance(last_message['text'])['result']
-	xCoin = last_balance['Available'] # доступный для торговли баланс	
-	bid = last_tiker = my_bittrex.get_ticker('BTC-'+ last_message['text'])['result']['Bid']			
-	bid = bid / 100 * (100 + cfg.getfloat('Data', 'sellpercent'))
-	text = str(my_bittrex.sell_limit('BTC-'+ last_message['text'], xCoin , bid ) )
-	bot.sendMessage(chat_id = str(last_message['from']['id']), text =  "Ответ bittrex на продажу: \n\n" + text ) 
-	bot.sendMessage(chat_id = str(last_message['from']['id']), text =  "Операция выполнена" ) 
-	
+		for y in range(0,len(get_open_orders['result'])):						
+			my_bittrex.cancel(get_open_orders['result'][y]['OrderUuid'])
+			time.sleep(0.1)									
+			
